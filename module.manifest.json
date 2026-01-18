@@ -1,0 +1,22 @@
+{
+  "moduleId": "webwaka-core-inventory",
+  "version": "0.1.0",
+  "class": "core",
+  "name": "Inventory Core",
+  "description": "Shared inventory management service providing single source of truth for stock across all WebWaka Suites",
+  "repository": "https://github.com/changerplanet/webwaka-core-inventory",
+  "author": "WebWaka Team",
+  "license": "TBD",
+  "capabilities": [],
+  "dependencies": [
+    {
+      "moduleId": "webwaka-core-registry",
+      "version": "^0.1.0",
+      "required": true
+    }
+  ],
+  "exports": {
+    "types": "./dist/index.d.ts",
+    "main": "./dist/index.js"
+  }
+}
