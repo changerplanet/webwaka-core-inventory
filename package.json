@@ -1,0 +1,32 @@
+{
+  "name": "webwaka-core-inventory",
+  "version": "0.1.0",
+  "description": "Shared inventory management service providing single source of truth for stock across all WebWaka Suites",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "webwaka",
+    "inventory",
+    "stock-management"
+  ],
+  "author": "WebWaka Team",
+  "license": "TBD",
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
