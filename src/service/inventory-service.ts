@@ -173,6 +173,7 @@ export class InventoryService {
       tenantId: validated.tenantId,
       quantity: validated.quantity,
       source: validated.source,
+      locationId,
       expiresAt,
       status: 'active',
       createdAt: now,
@@ -212,7 +213,7 @@ export class InventoryService {
     const stockLevel = await this.stockStorage.get(
       tenantId,
       reservation.inventoryItemId,
-      null
+      reservation.locationId
     );
 
     if (stockLevel) {
@@ -250,7 +251,7 @@ export class InventoryService {
     const stockLevel = await this.stockStorage.get(
       tenantId,
       reservation.inventoryItemId,
-      null
+      reservation.locationId
     );
 
     if (stockLevel) {

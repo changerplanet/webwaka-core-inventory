@@ -33,6 +33,7 @@ export const InventoryReservationSchema = z.object({
   tenantId: z.string().min(1),
   quantity: z.number().int().positive(),
   source: ReservationSource,
+  locationId: z.string().nullable(),
   expiresAt: z.date(),
   status: ReservationStatus,
   createdAt: z.date(),

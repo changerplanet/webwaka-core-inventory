@@ -140,6 +140,7 @@ getAvailability(tenantId: string, inventoryItemId: string, locationId?: string):
   tenantId: string
   quantity: number
   source: 'pos' | 'svm' | 'mvm' | 'system'
+  locationId: string | null
   expiresAt: Date
   status: 'active' | 'released' | 'fulfilled'
   createdAt: Date

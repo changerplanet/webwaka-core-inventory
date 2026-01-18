@@ -642,4 +642,92 @@ describe('webwaka-core-inventory', () => {
       ).rejects.toThrow('Cannot fulfill reservation with status: fulfilled');
     });
   });
+
+  describe('Multi-Location Support', () => {
+    it('reserves stock at specific location and releases to correct location', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'LOC-001',
+        name: 'Location Product',
+        unit: 'pcs',
+        initialQuantity: 100,
+        locationId: 'warehouse-a',
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 30,
+        source: 'pos',
+        locationId: 'warehouse-a',
+      });
+
+      expect(reservation.locationId).toBe('warehouse-a');
+
+      let availability = await service.getAvailability('tenant-1', item.inventoryItemId, 'warehouse-a');
+      expect(availability.quantityReserved).toBe(30);
+      expect(availability.quantityAvailable).toBe(70);
+
+      await service.releaseReservation('tenant-1', reservation.reservationId);
+
+      availability = await service.getAvailability('tenant-1', item.inventoryItemId, 'warehouse-a');
+      expect(availability.quantityReserved).toBe(0);
+      expect(availability.quantityAvailable).toBe(100);
+    });
+
+    it('reserves stock at specific location and fulfills to correct location', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'LOC-002',
+        name: 'Location Product 2',
+        unit: 'pcs',
+        initialQuantity: 50,
+        locationId: 'warehouse-b',
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 20,
+        source: 'mvm',
+        locationId: 'warehouse-b',
+      });
+
+      await service.fulfillReservation('tenant-1', reservation.reservationId);
+
+      const availability = await service.getAvailability('tenant-1', item.inventoryItemId, 'warehouse-b');
+      expect(availability.quantityOnHand).toBe(30);
+      expect(availability.quantityReserved).toBe(0);
+      expect(availability.quantityAvailable).toBe(30);
+    });
+
+    it('prevents overbooking at specific location', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'LOC-003',
+        name: 'Limited Stock Product',
+        unit: 'pcs',
+        initialQuantity: 10,
+        locationId: 'warehouse-c',
+      });
+
+      await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 8,
+        source: 'pos',
+        locationId: 'warehouse-c',
+      });
+
+      await expect(
+        service.reserveStock({
+          tenantId: 'tenant-1',
+          inventoryItemId: item.inventoryItemId,
+          quantity: 5,
+          source: 'svm',
+          locationId: 'warehouse-c',
+        })
+      ).rejects.toThrow(InsufficientStockError);
+    });
+  });
 });
