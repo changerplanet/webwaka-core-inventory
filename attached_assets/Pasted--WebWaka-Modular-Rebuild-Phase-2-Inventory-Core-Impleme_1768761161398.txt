@@ -1,0 +1,257 @@
+
+WebWaka Modular Rebuild
+
+Phase 2 — Inventory Core Implementation
+
+Repository: changerplanet/webwaka-core-inventory
+
+⸻
+
+CONTEXT (READ CAREFULLY — NON-NEGOTIABLE)
+
+You are implementing Inventory Core for the WebWaka platform.
+
+This is a canonical core service, not a Suite, not an App, not a UI.
+
+All governance, CI, repo structure, branch protection, and Vercel binding are already complete.
+
+Your responsibility starts now, and is strictly limited to business logic implementation.
+
+⸻
+
+PLATFORM & REPO INSTRUCTIONS (MANDATORY)
+	•	Platform: Replit
+	•	Language: TypeScript only
+	•	Project Type: Headless library (NO server, NO UI, NO React, NO FastAPI)
+	•	Target Repo:
+
+https://github.com/changerplanet/webwaka-core-inventory
+
+
+	•	Branch Strategy:
+	•	You may push directly to main
+	•	Branching is NOT required in Replit
+	•	CI must pass before final submission
+
+⸻
+
+ABSOLUTE SCOPE BOUNDARIES
+
+❌ DO NOT
+	•	Add UI, API routes, dashboards, or screens
+	•	Add POS, SVM, or MVM business logic
+	•	Duplicate Payments, Receipts, Audit, Identity, or Permissions logic
+	•	Introduce demo data or demo bypasses
+	•	Store tenant-agnostic data
+	•	Violate tenant isolation
+	•	Drift into Suite behavior
+
+✅ YOU MUST
+	•	Implement reusable inventory primitives
+	•	Support multiple consuming Suites
+	•	Enforce tenant isolation everywhere
+	•	Be offline-safe by design
+	•	Be deterministic and auditable
+
+⸻
+
+CORE PURPOSE OF INVENTORY CORE
+
+Inventory Core is the single source of truth for:
+	•	Stock levels
+	•	Reservations
+	•	Adjustments
+	•	Movements
+	•	Availability queries
+
+It must work identically whether consumed by:
+	•	POS
+	•	SVM
+	•	MVM
+	•	Future Suites
+
+⸻
+
+REQUIRED DOMAIN MODEL (MINIMUM)
+
+You must implement the following core entities:
+
+InventoryItem
+	•	inventoryItemId
+	•	tenantId
+	•	sku
+	•	name
+	•	unit
+	•	metadata
+	•	createdAt
+
+StockLevel
+	•	inventoryItemId
+	•	tenantId
+	•	locationId (nullable)
+	•	quantityOnHand
+	•	quantityReserved
+	•	updatedAt
+
+InventoryReservation
+	•	reservationId
+	•	inventoryItemId
+	•	tenantId
+	•	quantity
+	•	source (pos | svm | mvm | system)
+	•	expiresAt
+	•	status (active | released | fulfilled)
+
+InventoryAdjustment
+	•	adjustmentId
+	•	inventoryItemId
+	•	tenantId
+	•	delta
+	•	reason
+	•	actor
+	•	timestamp
+
+⸻
+
+REQUIRED PUBLIC API (NON-NEGOTIABLE)
+
+Expose a single service:
+
+InventoryService
+
+It MUST include at least:
+
+createItem(input)
+getItem(tenantId, inventoryItemId)
+listItems(tenantId, filters?)
+
+getStockLevel(tenantId, inventoryItemId, locationId?)
+listStockLevels(tenantId)
+
+reserveStock(input)
+releaseReservation(reservationId)
+fulfillReservation(reservationId)
+
+adjustStock(input)
+getAvailability(tenantId, inventoryItemId)
+
+
+⸻
+
+TENANT ISOLATION (CRITICAL)
+
+Every public method must:
+	•	Require tenantId
+	•	Enforce tenant scoping
+	•	Prevent cross-tenant reads or writes
+	•	Be explicitly tested for isolation violations
+
+⸻
+
+STORAGE ABSTRACTION (MANDATORY)
+
+You MUST define interfaces:
+	•	InventoryStorage
+	•	StockStorage
+	•	ReservationStorage
+	•	AdjustmentStorage
+
+And provide:
+	•	In-memory implementations ONLY for testing
+
+No database assumptions. No persistence engines.
+
+⸻
+
+DEPENDENCIES
+
+You MAY depend on:
+	•	webwaka-core-registry (manifest dependency)
+	•	webwaka-core-audit (optional, via emitted events)
+	•	zod (validation)
+	•	Deterministic JSON utilities if needed
+
+You MUST NOT depend directly on:
+	•	POS
+	•	SVM
+	•	MVM
+	•	Payments
+	•	Receipts
+
+⸻
+
+CAPABILITIES (MANIFEST)
+
+Update module.manifest.json with capabilities such as:
+
+inventory:create-item
+inventory:adjust-stock
+inventory:reserve-stock
+inventory:release-reservation
+inventory:fulfill-reservation
+inventory:query-availability
+
+
+⸻
+
+TESTING REQUIREMENTS (HARD STOP)
+
+You MUST provide tests proving:
+
+Hard Stop Condition (MANDATORY)
+
+A single tenant can manage inventory that is safely shared across POS, SVM, and MVM without double-selling or leakage.
+
+Specifically prove:
+	•	Stock reservation reduces availability
+	•	Releasing a reservation restores availability
+	•	Fulfilling a reservation permanently reduces stock
+	•	Two reservations cannot overbook stock
+	•	Cross-tenant access is rejected
+
+Coverage Requirements
+	•	≥ 80% coverage minimum
+	•	Explicit tests for:
+	•	Tenant isolation
+	•	Reservation race conditions
+	•	Adjustment correctness
+
+⸻
+
+DELIVERY CHECKLIST (ALL REQUIRED)
+
+Before stopping, ensure:
+	•	All tests pass
+	•	CI passes
+	•	module.contract.md updated
+	•	module.manifest.json valid
+	•	No unused exports
+	•	No TODOs left unresolved
+
+⸻
+
+STOP RULE
+
+⛔ STOP IMMEDIATELY AFTER COMPLETION
+
+Do NOT proceed to:
+	•	POS integration
+	•	UI
+	•	Sync logic
+	•	Suite-specific behavior
+
+You must end with:
+
+“Phase 2 — Inventory Core implementation complete. Awaiting authorization for next phase.”
+
+⸻
+
+FINAL NOTE (IMPORTANT)
+
+This module is foundational.
+
+If it is wrong, every Suite will be wrong.
+
+Favor correctness, determinism, and clarity over speed.
+
+⸻
