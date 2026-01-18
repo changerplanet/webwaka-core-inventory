@@ -1,0 +1,645 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  InventoryService,
+  InMemoryInventoryStorage,
+  InMemoryStockStorage,
+  InMemoryReservationStorage,
+  InMemoryAdjustmentStorage,
+  TenantIsolationError,
+  InsufficientStockError,
+  NotFoundError,
+  VERSION,
+} from './index';
+
+describe('webwaka-core-inventory', () => {
+  let service: InventoryService;
+  let inventoryStorage: InMemoryInventoryStorage;
+  let stockStorage: InMemoryStockStorage;
+  let reservationStorage: InMemoryReservationStorage;
+  let adjustmentStorage: InMemoryAdjustmentStorage;
+
+  beforeEach(() => {
+    inventoryStorage = new InMemoryInventoryStorage();
+    stockStorage = new InMemoryStockStorage();
+    reservationStorage = new InMemoryReservationStorage();
+    adjustmentStorage = new InMemoryAdjustmentStorage();
+
+    service = new InventoryService({
+      inventoryStorage,
+      stockStorage,
+      reservationStorage,
+      adjustmentStorage,
+    });
+  });
+
+  it('exports version', () => {
+    expect(VERSION).toBe('0.1.0');
+  });
+
+  describe('Item Management', () => {
+    it('creates an inventory item', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      expect(item.inventoryItemId).toBeDefined();
+      expect(item.tenantId).toBe('tenant-1');
+      expect(item.sku).toBe('SKU-001');
+      expect(item.name).toBe('Widget');
+    });
+
+    it('retrieves an item by id', async () => {
+      const created = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+      });
+
+      const retrieved = await service.getItem('tenant-1', created.inventoryItemId);
+      expect(retrieved.inventoryItemId).toBe(created.inventoryItemId);
+    });
+
+    it('lists items for a tenant', async () => {
+      await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget A',
+        unit: 'pcs',
+      });
+      await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-002',
+        name: 'Widget B',
+        unit: 'pcs',
+      });
+
+      const items = await service.listItems('tenant-1');
+      expect(items.length).toBe(2);
+    });
+
+    it('filters items by sku', async () => {
+      await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget A',
+        unit: 'pcs',
+      });
+      await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-002',
+        name: 'Widget B',
+        unit: 'pcs',
+      });
+
+      const items = await service.listItems('tenant-1', { sku: '001' });
+      expect(items.length).toBe(1);
+      expect(items[0].sku).toBe('SKU-001');
+    });
+  });
+
+  describe('Stock Level Management', () => {
+    it('creates stock level when item is created', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const stock = await service.getStockLevel('tenant-1', item.inventoryItemId);
+      expect(stock.quantityOnHand).toBe(100);
+      expect(stock.quantityReserved).toBe(0);
+    });
+
+    it('lists all stock levels for tenant', async () => {
+      await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget A',
+        unit: 'pcs',
+        initialQuantity: 50,
+      });
+      await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-002',
+        name: 'Widget B',
+        unit: 'pcs',
+        initialQuantity: 75,
+      });
+
+      const stocks = await service.listStockLevels('tenant-1');
+      expect(stocks.length).toBe(2);
+    });
+  });
+
+  describe('Stock Reservations', () => {
+    it('reserves stock and reduces availability', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 30,
+        source: 'pos',
+      });
+
+      expect(reservation.status).toBe('active');
+      expect(reservation.quantity).toBe(30);
+
+      const availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityOnHand).toBe(100);
+      expect(availability.quantityReserved).toBe(30);
+      expect(availability.quantityAvailable).toBe(70);
+    });
+
+    it('releasing a reservation restores availability', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 30,
+        source: 'svm',
+      });
+
+      await service.releaseReservation('tenant-1', reservation.reservationId);
+
+      const availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityAvailable).toBe(100);
+      expect(availability.quantityReserved).toBe(0);
+    });
+
+    it('fulfilling a reservation permanently reduces stock', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 30,
+        source: 'mvm',
+      });
+
+      await service.fulfillReservation('tenant-1', reservation.reservationId);
+
+      const availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityOnHand).toBe(70);
+      expect(availability.quantityReserved).toBe(0);
+      expect(availability.quantityAvailable).toBe(70);
+    });
+
+    it('prevents overbooking - two reservations cannot exceed available stock', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 50,
+      });
+
+      await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 30,
+        source: 'pos',
+      });
+
+      await expect(
+        service.reserveStock({
+          tenantId: 'tenant-1',
+          inventoryItemId: item.inventoryItemId,
+          quantity: 25,
+          source: 'svm',
+        })
+      ).rejects.toThrow(InsufficientStockError);
+
+      const availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityReserved).toBe(30);
+      expect(availability.quantityAvailable).toBe(20);
+    });
+
+    it('allows multiple reservations within available stock', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 30,
+        source: 'pos',
+      });
+
+      await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 20,
+        source: 'svm',
+      });
+
+      const availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityReserved).toBe(50);
+      expect(availability.quantityAvailable).toBe(50);
+    });
+  });
+
+  describe('Stock Adjustments', () => {
+    it('adjusts stock positively', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const adjustment = await service.adjustStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        delta: 50,
+        reason: 'Received shipment',
+        actor: 'warehouse-user-1',
+      });
+
+      expect(adjustment.delta).toBe(50);
+
+      const stock = await service.getStockLevel('tenant-1', item.inventoryItemId);
+      expect(stock.quantityOnHand).toBe(150);
+    });
+
+    it('adjusts stock negatively', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      await service.adjustStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        delta: -20,
+        reason: 'Damaged goods',
+        actor: 'warehouse-user-1',
+      });
+
+      const stock = await service.getStockLevel('tenant-1', item.inventoryItemId);
+      expect(stock.quantityOnHand).toBe(80);
+    });
+  });
+
+  describe('Tenant Isolation', () => {
+    it('prevents cross-tenant item access', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+      });
+
+      await expect(
+        service.getItem('tenant-2', item.inventoryItemId)
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('prevents cross-tenant stock level access', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      await expect(
+        service.getStockLevel('tenant-2', item.inventoryItemId)
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('prevents cross-tenant reservation release', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 10,
+        source: 'pos',
+      });
+
+      await expect(
+        service.releaseReservation('tenant-2', reservation.reservationId)
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('prevents cross-tenant reservation fulfillment', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 10,
+        source: 'pos',
+      });
+
+      await expect(
+        service.fulfillReservation('tenant-2', reservation.reservationId)
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('tenants have isolated inventory lists', async () => {
+      await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget A',
+        unit: 'pcs',
+      });
+      await service.createItem({
+        tenantId: 'tenant-2',
+        sku: 'SKU-002',
+        name: 'Widget B',
+        unit: 'pcs',
+      });
+
+      const tenant1Items = await service.listItems('tenant-1');
+      const tenant2Items = await service.listItems('tenant-2');
+
+      expect(tenant1Items.length).toBe(1);
+      expect(tenant2Items.length).toBe(1);
+      expect(tenant1Items[0].sku).toBe('SKU-001');
+      expect(tenant2Items[0].sku).toBe('SKU-002');
+    });
+
+    it('tenants have isolated stock levels', async () => {
+      await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget A',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+      await service.createItem({
+        tenantId: 'tenant-2',
+        sku: 'SKU-001',
+        name: 'Widget A',
+        unit: 'pcs',
+        initialQuantity: 200,
+      });
+
+      const tenant1Stocks = await service.listStockLevels('tenant-1');
+      const tenant2Stocks = await service.listStockLevels('tenant-2');
+
+      expect(tenant1Stocks.length).toBe(1);
+      expect(tenant2Stocks.length).toBe(1);
+      expect(tenant1Stocks[0].quantityOnHand).toBe(100);
+      expect(tenant2Stocks[0].quantityOnHand).toBe(200);
+    });
+
+    it('requires tenantId for all operations', async () => {
+      await expect(service.listItems('')).rejects.toThrow(TenantIsolationError);
+      await expect(service.listStockLevels('')).rejects.toThrow(TenantIsolationError);
+    });
+  });
+
+  describe('Multi-Suite Shared Inventory (Hard Stop Condition)', () => {
+    it('single tenant can manage inventory shared across POS, SVM, MVM without double-selling', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SHARED-001',
+        name: 'Shared Product',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const posReservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 30,
+        source: 'pos',
+      });
+      expect(posReservation.source).toBe('pos');
+
+      let availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityAvailable).toBe(70);
+
+      const svmReservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 25,
+        source: 'svm',
+      });
+      expect(svmReservation.source).toBe('svm');
+
+      availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityAvailable).toBe(45);
+
+      const mvmReservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 20,
+        source: 'mvm',
+      });
+      expect(mvmReservation.source).toBe('mvm');
+
+      availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityAvailable).toBe(25);
+
+      await expect(
+        service.reserveStock({
+          tenantId: 'tenant-1',
+          inventoryItemId: item.inventoryItemId,
+          quantity: 30,
+          source: 'system',
+        })
+      ).rejects.toThrow(InsufficientStockError);
+
+      await service.fulfillReservation('tenant-1', posReservation.reservationId);
+      availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityOnHand).toBe(70);
+      expect(availability.quantityReserved).toBe(45);
+      expect(availability.quantityAvailable).toBe(25);
+
+      await service.releaseReservation('tenant-1', svmReservation.reservationId);
+      availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityOnHand).toBe(70);
+      expect(availability.quantityReserved).toBe(20);
+      expect(availability.quantityAvailable).toBe(50);
+
+      await service.fulfillReservation('tenant-1', mvmReservation.reservationId);
+      availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+      expect(availability.quantityOnHand).toBe(50);
+      expect(availability.quantityReserved).toBe(0);
+      expect(availability.quantityAvailable).toBe(50);
+    });
+
+    it('reservation from one source does not affect another tenant stock', async () => {
+      const item1 = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'PRODUCT-001',
+        name: 'Product',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const item2 = await service.createItem({
+        tenantId: 'tenant-2',
+        sku: 'PRODUCT-001',
+        name: 'Product',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item1.inventoryItemId,
+        quantity: 80,
+        source: 'pos',
+      });
+
+      const tenant1Availability = await service.getAvailability('tenant-1', item1.inventoryItemId);
+      const tenant2Availability = await service.getAvailability('tenant-2', item2.inventoryItemId);
+
+      expect(tenant1Availability.quantityAvailable).toBe(20);
+      expect(tenant2Availability.quantityAvailable).toBe(100);
+    });
+  });
+
+  describe('Availability Query', () => {
+    it('returns correct availability calculation', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 25,
+        source: 'pos',
+      });
+
+      const availability = await service.getAvailability('tenant-1', item.inventoryItemId);
+
+      expect(availability.inventoryItemId).toBe(item.inventoryItemId);
+      expect(availability.tenantId).toBe('tenant-1');
+      expect(availability.quantityOnHand).toBe(100);
+      expect(availability.quantityReserved).toBe(25);
+      expect(availability.quantityAvailable).toBe(75);
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('throws NotFoundError for non-existent item', async () => {
+      await expect(
+        service.getItem('tenant-1', '00000000-0000-0000-0000-000000000000')
+      ).rejects.toThrow(NotFoundError);
+    });
+
+    it('throws InsufficientStockError when reserving more than available', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 10,
+      });
+
+      await expect(
+        service.reserveStock({
+          tenantId: 'tenant-1',
+          inventoryItemId: item.inventoryItemId,
+          quantity: 20,
+          source: 'pos',
+        })
+      ).rejects.toThrow(InsufficientStockError);
+    });
+
+    it('prevents releasing already released reservation', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 10,
+        source: 'pos',
+      });
+
+      await service.releaseReservation('tenant-1', reservation.reservationId);
+
+      await expect(
+        service.releaseReservation('tenant-1', reservation.reservationId)
+      ).rejects.toThrow('Cannot release reservation with status: released');
+    });
+
+    it('prevents fulfilling already fulfilled reservation', async () => {
+      const item = await service.createItem({
+        tenantId: 'tenant-1',
+        sku: 'SKU-001',
+        name: 'Widget',
+        unit: 'pcs',
+        initialQuantity: 100,
+      });
+
+      const reservation = await service.reserveStock({
+        tenantId: 'tenant-1',
+        inventoryItemId: item.inventoryItemId,
+        quantity: 10,
+        source: 'pos',
+      });
+
+      await service.fulfillReservation('tenant-1', reservation.reservationId);
+
+      await expect(
+        service.fulfillReservation('tenant-1', reservation.reservationId)
+      ).rejects.toThrow('Cannot fulfill reservation with status: fulfilled');
+    });
+  });
+});
