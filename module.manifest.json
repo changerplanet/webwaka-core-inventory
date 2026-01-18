@@ -7,7 +7,14 @@
   "repository": "https://github.com/changerplanet/webwaka-core-inventory",
   "author": "WebWaka Team",
   "license": "TBD",
-  "capabilities": [],
+  "capabilities": [
+    "inventory:create-item",
+    "inventory:adjust-stock",
+    "inventory:reserve-stock",
+    "inventory:release-reservation",
+    "inventory:fulfill-reservation",
+    "inventory:query-availability"
+  ],
   "dependencies": [
     {
       "moduleId": "webwaka-core-registry",
