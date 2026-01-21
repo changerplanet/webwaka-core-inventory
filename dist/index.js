@@ -1,0 +1,26 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.VERSION = exports.InventoryService = exports.InMemoryAdjustmentStorage = exports.InMemoryReservationStorage = exports.InMemoryStockStorage = exports.InMemoryInventoryStorage = exports.NotFoundError = exports.InsufficientStockError = exports.TenantIsolationError = exports.InventoryError = exports.AdjustStockInputSchema = exports.ReserveStockInputSchema = exports.CreateItemInputSchema = exports.InventoryAdjustmentSchema = exports.InventoryReservationSchema = exports.StockLevelSchema = exports.InventoryItemSchema = exports.ReservationStatus = exports.ReservationSource = void 0;
+var types_1 = require("./models/types");
+Object.defineProperty(exports, "ReservationSource", { enumerable: true, get: function () { return types_1.ReservationSource; } });
+Object.defineProperty(exports, "ReservationStatus", { enumerable: true, get: function () { return types_1.ReservationStatus; } });
+Object.defineProperty(exports, "InventoryItemSchema", { enumerable: true, get: function () { return types_1.InventoryItemSchema; } });
+Object.defineProperty(exports, "StockLevelSchema", { enumerable: true, get: function () { return types_1.StockLevelSchema; } });
+Object.defineProperty(exports, "InventoryReservationSchema", { enumerable: true, get: function () { return types_1.InventoryReservationSchema; } });
+Object.defineProperty(exports, "InventoryAdjustmentSchema", { enumerable: true, get: function () { return types_1.InventoryAdjustmentSchema; } });
+Object.defineProperty(exports, "CreateItemInputSchema", { enumerable: true, get: function () { return types_1.CreateItemInputSchema; } });
+Object.defineProperty(exports, "ReserveStockInputSchema", { enumerable: true, get: function () { return types_1.ReserveStockInputSchema; } });
+Object.defineProperty(exports, "AdjustStockInputSchema", { enumerable: true, get: function () { return types_1.AdjustStockInputSchema; } });
+Object.defineProperty(exports, "InventoryError", { enumerable: true, get: function () { return types_1.InventoryError; } });
+Object.defineProperty(exports, "TenantIsolationError", { enumerable: true, get: function () { return types_1.TenantIsolationError; } });
+Object.defineProperty(exports, "InsufficientStockError", { enumerable: true, get: function () { return types_1.InsufficientStockError; } });
+Object.defineProperty(exports, "NotFoundError", { enumerable: true, get: function () { return types_1.NotFoundError; } });
+var memory_1 = require("./storage/memory");
+Object.defineProperty(exports, "InMemoryInventoryStorage", { enumerable: true, get: function () { return memory_1.InMemoryInventoryStorage; } });
+Object.defineProperty(exports, "InMemoryStockStorage", { enumerable: true, get: function () { return memory_1.InMemoryStockStorage; } });
+Object.defineProperty(exports, "InMemoryReservationStorage", { enumerable: true, get: function () { return memory_1.InMemoryReservationStorage; } });
+Object.defineProperty(exports, "InMemoryAdjustmentStorage", { enumerable: true, get: function () { return memory_1.InMemoryAdjustmentStorage; } });
+var inventory_service_1 = require("./service/inventory-service");
+Object.defineProperty(exports, "InventoryService", { enumerable: true, get: function () { return inventory_service_1.InventoryService; } });
+exports.VERSION = '0.1.0';
+//# sourceMappingURL=index.js.map
